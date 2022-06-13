@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <script src="myjq.js?v=1"></script>
+  <style>
+      #inputs {
+          margin: 30px;
+      }
+
+      input[type="search"] {
+          width: 600px;
+          font-size: 18px;
+          padding: 5px;
+      }
+
+      textarea {
+          width: 590px;
+          height: 60px;
+          font-size: 18px;
+          padding: 5px;
+      }
+
+      input[type="checkbox"] {
+          width: 20px;
+          padding: 5px;
+          margin: 10px 0;
+      }
+
+      button {
+          margin: 5px 10px;
+          font-size: 16px;
+          vertical-align: top;
+      }
+
+      table {
+          margin: 0 20px;
+          border-collapse: collapse;
+          border-spacing: 0;
+      }
+
+      td, th {
+          /*border: 1px solid gray;*/
+          padding: 3px 5px;
+      }
+
+      th {
+          border-bottom: 1px solid #666;
+      }
+
+      pre {
+          overflow: scroll;
+      }
+
+      #commands {
+          /*border-top:1px solid #666;*/
+          /*border-bottom:1px solid #666;*/
+      }
+
+      #output {
+          position: fixed;
+          font-size: 16px;
+          right: 60px;
+          top: 220px;
+          padding: 20px;
+          width: 70%;
+          background: #f8f8f8;
+          border: 1px solid #666;
+          border-radius: 10px;
+      }
+
+      #bookmark {
+          position: fixed;
+          right: 20px;
+          top: 248px;
+      }
+
+      #project {
+          font-size: 18px;
+          height: 36px;
+      }
+
+      .line {
+          padding: 0 30px;
+          /*white-space: nowrap;*/
+      }
+
+      .cmd {
+          /*display: inline-block;*/
+          font-size: 16px;
+          width: 150px;
+          color: #22c016;
+      }
+
+      .desc {
+          /*display: inline-block;*/
+          /*padding: 5px;*/
+          font-size: 16px;
+          color: #666;
+          /*text-overflow: ellipsis;*/
+          /*overflow: scroll;*/
+          /*border-bottom: 1px solid #ddd*/
+      }
+
+      #node_bookmarks_lc {
+          margin-top: 30px;
+      }
+
+      #node_bookmarks_ic {
+          margin-top: 20px;
+          margin-bottom: 30px;
+      }
+
+      .unbookmark {
+          vertical-align: middle;
+          width: 24px;
+      }
+
+      #waiting {
+          position: fixed;
+          left: 300px;
+          top: 500px;
+      }
+  </style>
+</head>
+<body>
+<table id="inputs">
+  <tr>
+    <td>COMMAND</td>
+    <td><textarea id="full_cmd" type="text" disabled="disabled"></textarea>
+      <button onclick="run()">run</button>
+    </td>
+  </tr>
+  <tr style="display:none">
+    <td>COMMAND:</td>
+    <td><input id="command" type="text" disabled="disabled"></td>
+  </tr>
+  <tr>
+    <td>OPTIONS:</td>
+    <td><input id="options" name="options" type="search"></td>
+  </tr>
+  <tr>
+    <td>ARGS:</td>
+    <td><input id="args" name="args" type="search"></td>
+  </tr>
+  <tr>
+    <td>PROJECT:</td>
+    <td>
+      <select id="project"></select>
+      <input type="checkbox" name="help" id="help" checked><label for="help">--help</label>
+      <input type="checkbox" name="ic" id="ic"><label for="ic">--network=ic</label>
+    </td>
+  </tr>
+</table>
+<div id="commands"></div>
+<pre id="output"></pre>
+<div id="bookmark"></div>
+<div id="node_bookmarks_lc"></div>
+<div id="node_bookmarks_ic"></div>
+<img id="waiting" src="bubududu.gif"/>
+</body>
+</html>
+<script>
+  var dfx          = {}
+  var LS           = localStorage
+  var command
+  var options
+  var bookmarks_lc = LS.bookmarks_lc ? JSON.parse(LS.bookmarks_lc) : {}
+  var bookmarks_ic = LS.bookmarks_ic ? JSON.parse(LS.bookmarks_ic) : {}
+
+  $(function(){
+    $('#options').input(getCommand)
+    $('#args').input(getCommand)
+    $('#help').change(getCommand)
+    $('#ic').change(getCommand)
+
+    // $('#output').click(_ => {
+    //   _.H()
+    //   $('#bookmark').H()
+    // })
+
+    $('#bookmark').down(_ => {
+      let bookmarks = $('#ic').context.checked ? 'bookmarks_ic' : 'bookmarks_lc'
+      if(window[bookmarks][command]){
+        delete window[bookmarks][command]
+        hightLightStar(false)
+      }
+      else{
+        window[bookmarks][command] = $('#output').I_
+        hightLightStar(true)
+      }
+
+      LS[bookmarks] = JSON.stringify(window[bookmarks])
+      showBookmarks()
+    })
+
+    showBookmarks()
+    readProject()
+    run()
+  })
+
+  function run(){
+    $('#output').H()
+    $('#bookmark').H()
+
+    let command_str = getCommand()
+    let project     = $('#project').val()
+
+    let timer = setTimeout(function(){
+      $('#waiting').S({
+        T : 200,
+        TS: 500,
+      })
+    }, 200)
+
+    $.post('/api/dfx', {
+      command: command_str,
+      project: project == 'select project' ? '' : project
+    }, res => {
+      clearTimeout(timer)
+      $('#waiting').S({
+        T: -500,
+      })
+
+      res = res.replace(/\</g, '&lt;').replace(/\>/g, '&gt;');
+      if(command == 'dfx'){
+        setVersionDesc(res)
+      }
+      let obj         = getObj()
+      let subcommands = getSubcommands(res)
+
+      if(subcommands){
+        obj.subcommands = subcommands
+        showObj()
+      }
+      else{
+        let options = getOptions(res)
+        if(options){
+          if(Object.keys(options).length){
+            obj.options = options
+            showObj()
+          }
+          else{
+            // run({help: false}) 造成死循环
+          }
+        }
+
+        $('#output').I(addColor(res)).V()
+      }
+
+    })
+  }
+
+  function readProject(){
+    $.post('/api/project', {}, res => {
+      console.log(res)
+      var options = JSON.parse(res)
+      options.unshift('select project')
+      $('#project').I('<option>' + options.join('</option><option>') + '</option>')
+    })
+  }
+
+  function getCommand(){
+    command  = $('#command').val() || 'dfx'
+    options  = $('#options').val() || ''
+    let args = $('#args').val() || ''
+    let help = $('#help').context.checked
+    let ic   = $('#ic').context.checked
+
+    let command_str = command
+    if(ic && command != 'dfx'){
+      let a = command.split(/\s+/)
+      a.splice(2, 0, '--network=ic')
+      command_str = a.join(' ')
+    }
+
+    if(options){
+      command_str += ' ' + options
+    }
+
+    if(args){
+      command_str += ' ' + args
+    }
+    else if(help){
+      command_str += ' --help'
+    }
+
+    $('#full_cmd').val(command_str)
+
+    return command_str
+  }
+
+  function setVersionDesc(res){
+    let a       = res.split(/\n/)
+    dfx.version = a[0].slice(4).trim()
+    dfx.desc    = a[1].trim() + ' ' + dfx.version;
+  }
+
+  function getObj(){
+    let com_arr = command.split(/\s/)
+    let obj     = window
+    com_arr.map(com => {
+      if(obj == window){
+        obj = obj[com]
+      }
+      else{
+        obj = obj.subcommands[com]
+      }
+    })
+
+    return obj
+  }
+
+  function getSubcommands(res){
+    let a           = res.split('SUBCOMMANDS:')
+    let subcommands = {}
+    if(a[1]){
+      let cmd = a[1].split(/\n/g).slice(1)
+      let last_command
+      cmd.map(line => {
+        if(line){
+          line = line.slice(4)
+          if(line[0] != ' '){
+            line = line.split(/\s+/)
+            if(line[0] != 'help'){
+              last_command              = line[0]
+              subcommands[last_command] = {
+                desc: line.slice(1).join(' ')
+              }
+            }
+          }
+          else{
+            subcommands[last_command].desc += ' ' + line.trim()
+          }
+        }
+      })
+      console.log(subcommands)
+    }
+    else{
+      subcommands = null
+    }
+
+    return subcommands
+  }
+
+  function getOptions(res){
+    let a       = res.split('SUBCOMMANDS:')
+    let options = {}
+    if(!a[1]){
+      let b = res.split('\nOPTIONS:')
+      if(b[1]){
+        let option_arr = b[1].split(/[\s,]{2}--/g).slice(1)
+        let option
+        option_arr.map(line => {
+          let intro = line.replace(/^[\w\-]+\s(&lt;[\w\-]+&gt;)?/, str => {
+            option = '--' + str.trim()
+            return ''
+          })
+
+          if(!/\-(help|network)/.test(option)){
+            options[option] = intro.replace(/\s+/g, ' ').replace(/-\w$/, '').trim()
+          }
+        })
+
+        if(Object.keys(options).length == 0){
+          options = {}
+        }
+        else{
+          console.log(options)
+        }
+      }
+      else{
+        options = null
+      }
+    }
+    else{
+      options = null
+    }
+
+    return options
+  }
+
+  function showObj(obj = window.dfx, cmd = 'dfx', level = 0){
+    var html = '<table>'
+    html += obj2html(obj, cmd, level)
+    html += '</table>'
+    $('#commands').I(html)
+  }
+
+  function obj2html(obj, cmd, level){
+    var html = '<tr class="line">'
+    html += '<td class="cmd" onclick="cmd(' + level + ', this)">' + cmd + '</td>'
+    html += '<td class="desc" >' + (obj.desc || obj) + '</td>'
+    html += '</tr>'
+    if(cmd == 'dfx' || command.indexOf(' ' + cmd) > 0){
+      if(obj.subcommands){
+        html += '<tr>'
+        html += '<td colspan=2>'
+        html += '<table>'
+        for(let subcommand in obj.subcommands){
+          html += obj2html(obj.subcommands[subcommand], subcommand, level + 1)
+        }
+        html += '</table>'
+        html += '</td>'
+        html += '</tr>'
+      }
+      else if(obj.options){
+        html += '<tr>'
+        html += '<td colspan=2>'
+        html += '<table>'
+        for(let option in obj.options){
+          html += obj2html(obj.options[option], option, level + 1)
+        }
+        html += '</table>'
+        html += '</td>'
+        html += '</tr>'
+      }
+    }
+
+    return html
+  }
+
+  function cmd(level, node){
+    let val = node.innerText
+    if(val[0] == '-'){
+      let [option_cmd, option_arg] = val.split(' ')
+
+      options = $('#options').val().trim()
+      if(options.indexOf(option_cmd) == -1){
+        options += ' ' + val
+        options = options.trim()
+        $('#options').val(options)
+      }
+      getCommand()
+    }
+    else{
+      let _command    = $('#command').val().trim() || 'dfx'
+      let command_arr = _command.split(' ').slice(0, level)
+      command_arr.push(val)
+      command = command_arr.join(' ')
+      $('#options').val('')
+      $('#args').val('')
+      $('#command').val(command)
+      $('#output').H();
+      $('#bookmark').H();
+
+      let obj = getObj(command)
+      if(obj.subcommands){
+        showObj()
+      }
+      else{
+        run()
+      }
+    }
+  }
+
+  function addColor(res){
+    if(/USAGE:/.test(res)){
+      res = res.replace(/^[\w-]+/, str => {
+        return '<span style="color:#22c016">' + str + '</span>'
+      })
+    }
+    else{
+      let bookmarks = $('#ic').context.checked ? bookmarks_ic : bookmarks_lc
+      hightLightStar(bookmarks[command])
+    }
+
+    res = res
+      .replace(/(USAGE|ARGS|OPTIONS)\:/g, str => {
+        return '<span style="color:#cea503">' + str + '</span>'
+      })
+      .replace(/&lt;\w+&gt;/g, str => {
+        return '<span style="color:#22c016">' + str + '</span>'
+      })
+      .replace(/(?<=[, ]{2})\-+[\w\-]+/g, str => {
+        return '<span style="color:#22c016">' + str + '</span>'
+      })
+      .replace(/\n/g, str => {
+        return '<br/>'
+      })
+
+    return res
+  }
+
+  function hightLightStar(bool){
+    let fill = bool ? '#22c016' : '#fff'
+
+    $('#bookmark').I(`
+        <svg xmlns="http://www.w3.org/2000/svg" style="width:30px;height:30px;" fill="${fill}" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+        </svg>
+        `).V()
+  }
+
+  function showBookmarks(){
+    var html = '<table style="width:70%">'
+    html += '<tr><th colspan=3>bookmark local </th><tr>'
+    for(let cmd in bookmarks_lc){
+      html += '<tr>'
+      html += '<td width="20%"><button onclick="changeCommand(this)">' + cmd + '</button></td> '
+      html += '<td>' + bookmarks_lc[cmd].replace(/\n/g, '<br>') + '</td>'
+      html += '<td width="5%"><svg onclick="unBookmark(1,this)" class="unbookmark" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"> <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/> </svg></td>'
+      html += '</tr>'
+    }
+    html += '<table>'
+
+    $('#node_bookmarks_lc').I(html)
+
+    var html = '<table style="width:70%">'
+    html += '<tr><th colspan=3>bookmark network</th><tr>'
+    for(let cmd in bookmarks_ic){
+      html += '<tr>'
+      html += '<td width="20%"><button onclick="changeCommand(this)">' + cmd + '</button></td> '
+      html += '<td>' + bookmarks_ic[cmd].replace(/\n/g, '<br>') + '</td>'
+      html += '<td width="5%"><svg onclick="unBookmark(2,this)" class="unbookmark" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"> <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/> </svg></td>'
+      html += '</tr>'
+    }
+    html += '<table>'
+
+    $('#node_bookmarks_ic').I(html)
+  }
+
+  function changeCommand(node){
+    $('#command').val(node.innerText)
+    getCommand()
+  }
+
+  function unBookmark(n, node){
+    let cmd       = node.parentNode.previousElementSibling.previousElementSibling.innerText
+    let bookmarks = n == 1 ? 'bookmarks_lc' : 'bookmarks_ic'
+    delete window[bookmarks][cmd]
+
+    LS[bookmarks] = JSON.stringify(window[bookmarks])
+    showBookmarks()
+  }
+</script>
