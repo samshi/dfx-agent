@@ -88,7 +88,7 @@
       .cmd {
           /*display: inline-block;*/
           font-size: 16px;
-          width: 150px;
+          width: 180px;
           color: #22c016;
       }
 
@@ -222,7 +222,7 @@
         T: -500,
       })
 
-      res = res.replace(/\</g, '&lt;').replace(/\>/g, '&gt;');
+      res = res.replace(/\</g, '&lt;').replace(/\>/g, '&gt;').replace(/\rPlease enter a passphrase for your identity\: /g, '')
       if(command == 'dfx'){
         setVersionDesc(res)
       }
@@ -232,6 +232,7 @@
       if(subcommands){
         obj.subcommands = subcommands
         showObj()
+        return
       }
       else{
         let options = getOptions(res)
@@ -239,15 +240,12 @@
           if(Object.keys(options).length){
             obj.options = options
             showObj()
-          }
-          else{
-            // run({help: false}) 造成死循环
+            return
           }
         }
-
-        $('#output').I(addColor(res)).V()
       }
 
+      $('#output').I(addColor(res)).V()
     })
   }
 
