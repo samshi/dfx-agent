@@ -86,13 +86,13 @@ function runSpawn(cmd, cb){
   });
 
   proc.stderr.on('data', (data) => {
-    // 不一定代表进程exitcode != 0，可能只是进程调用了console.error
+    // 涓嶄竴瀹氫唬琛ㄨ繘绋媏xitcode != 0锛屽彲鑳藉彧鏄繘绋嬭皟鐢ㄤ簡console.error
     let dataStr = String(data);
     console.log(115, dataStr)
     err += dataStr
   });
 
-  // 进程错误
+  // 杩涚▼閿欒
   proc.on('error', (error) => {
     cb(1, 0, err + ' ' + error);
   });
